@@ -31,3 +31,4 @@ frontend/.vite/
 
 # Logs
 *.log
+*.pt

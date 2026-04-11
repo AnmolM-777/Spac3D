@@ -66,7 +66,7 @@ async def analyze_room(image: UploadFile = File(...)):
     try:
         # Step 1: Object Detection (YOLOv8)
         logger.info("Step 1/5: YOLOv8 object detection...")
-        detections = detect_objects(pil_image)
+        detections, person_count, total_boxes = detect_objects(pil_image)
 
         # Step 2: Feature Extraction (ResNet50 — Transfer Learning)
         logger.info("Step 2/5: ResNet50 feature extraction...")
@@ -80,9 +80,22 @@ async def analyze_room(image: UploadFile = File(...)):
         logger.info("Step 4/5: kNN + SVM style classification...")
         style, confidence = classify_style(embedding_32)
 
+        # Room Validation Heuristic: Reject if it's unlikely to be a room
+        is_group_photo = person_count > 0 and len(detections) == 0
+        is_random_photo = len(detections) == 0 and confidence < 0.40
+        
+        if is_group_photo or is_random_photo:
+            logger.warning(f"Rejected as non-room: furniture={len(detections)}, persons={person_count}, confidence={confidence:.2f}")
+            raise HTTPException(
+                status_code=400,
+                detail="This doesn't look like a room. Please upload a clear photo of an indoor space (like a living room, bedroom, etc). We couldn't detect any furniture or recognize the room style."
+            )
+
         # Step 5: Furniture Recommendation (Cosine Similarity)
+        # We request top_n=100 to get the full catalog (which has ~42 items)
+        # This allows the frontend to instantly filter recommendations by category when a bounding box is clicked.
         logger.info("Step 5/5: Cosine similarity furniture recommendation...")
-        recommendations = recommend_furniture(style, embedding_32, top_n=6)
+        recommendations = recommend_furniture(style, embedding_32, top_n=100)
 
         for rec in recommendations:
             rec.pop("feature_vector", None)
@@ -98,6 +111,9 @@ async def analyze_room(image: UploadFile = File(...)):
             "image_size": {"width": pil_image.width, "height": pil_image.height},
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Pipeline error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+

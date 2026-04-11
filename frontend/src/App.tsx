@@ -41,7 +41,69 @@ export default function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isDragOver, setIsDragOver] = useState(false)
+  const [selectedDetection, setSelectedDetection] = useState<Detection | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const CATEGORY_MAP: Record<string, string[]> = {
+    chair: ['chair', 'armchair', 'seat', 'pouf', 'stool'],
+    couch: ['sofa', 'couch', 'sectional'],
+    sofa: ['sofa', 'couch', 'sectional'],
+    bed: ['bed', 'mattress'],
+    'dining table': ['table', 'desk', 'console'],
+    table: ['table', 'desk', 'console'],
+    'potted plant': ['plant', 'planter'],
+    plant: ['plant', 'planter'],
+    tv: ['tv', 'console', 'media', 'stand'],
+    television: ['tv', 'console', 'media', 'stand'],
+    refrigerator: ['fridge', 'refrigerator'],
+    clock: ['clock'],
+    vase: ['vase'],
+    book: ['book', 'shelf', 'bookcase'],
+    lamp: ['lamp', 'light', 'pendant', 'chandelier', 'sconce'],
+    laptop: ['desk', 'office'],
+    monitor: ['desk', 'console'],
+    bench: ['bench', 'stool', 'ottoman'],
+    desk: ['desk', 'table'],
+    cabinet: ['cabinet', 'sideboard', 'credenza', 'storage'],
+    cushion: ['cushion', 'pillow', 'throw'],
+    pillow: ['pillow', 'cushion', 'throw'],
+    shelf: ['shelf', 'bookcase'],
+    drawer: ['drawer', 'cabinet', 'credenza', 'storage'],
+    rug: ['rug', 'carpet', 'mat'],
+    mirror: ['mirror', 'glass'],
+    painting: ['painting', 'art', 'canvas'],
+    ottoman: ['ottoman', 'pouf'],
+    stool: ['stool', 'seat'],
+    sideboard: ['sideboard', 'credenza'],
+    console: ['console', 'sideboard']
+  };
+
+  const getFilteredRecommendations = () => {
+    if (!result) return [];
+    if (!selectedDetection) return result.recommendations.slice(0, 6);
+    
+    const label = selectedDetection.label.toLowerCase();
+    const keywords = CATEGORY_MAP[label] || [label];
+    
+    const filtered = result.recommendations.filter(item => {
+      const name = item.name.toLowerCase();
+      return keywords.some(kw => name.includes(kw.toLowerCase()));
+    });
+    
+    return filtered.slice(0, 6);
+  };
+
+  const getAmazonSearchUrl = () => {
+    let query = ''
+    if (selectedDetection) {
+      query = `${result?.style || 'Modern'} ${selectedDetection.label} furniture`
+    } else {
+      query = `${result?.style || 'Modern'} style interior design furniture`
+    }
+    return `https://www.amazon.com/s?k=${encodeURIComponent(query)}`
+  };
+
+  const displayRecs = getFilteredRecommendations();
 
   const accentColor = result ? (STYLE_ACCENTS[result.style] ?? '#A8DADC') : '#A8DADC'
 
@@ -62,6 +124,7 @@ export default function App() {
     setImagePreview(URL.createObjectURL(file))
     setResult(null)
     setError(null)
+    setSelectedDetection(null)
   }
 
   const handleDrop = useCallback((e: React.DragEvent) => {
@@ -95,7 +158,12 @@ export default function App() {
       setResult(data)
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Unknown error'
-      setError(`Network Error: ${message} | URL: ${API_URL}/analyze`)
+      // Only prefix if it's actually a network error, otherwise show the clean server error message
+      if (message === 'Failed to fetch' || message.includes('NetworkError')) {
+        setError(`Network Error: Could not connect to backend at ${API_URL}`)
+      } else {
+        setError(message)
+      }
     } finally {
       setLoading(false)
     }
@@ -106,6 +174,7 @@ export default function App() {
     setImagePreview(null)
     setResult(null)
     setError(null)
+    setSelectedDetection(null)
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -162,6 +231,8 @@ export default function App() {
               detections={result?.detections ?? []}
               imageSize={result?.image_size}
               accentColor={accentColor}
+              selectedDetection={selectedDetection}
+              onSelectDetection={setSelectedDetection}
             />
           )}
 
@@ -253,16 +324,74 @@ export default function App() {
               )}
 
               {result.recommendations.length > 0 && (
-                <>
-                  <p className="recommendations-title">
-                    Furniture Recommendations
-                  </p>
-                  <div className="furniture-grid">
-                    {result.recommendations.map((item) => (
-                      <FurnitureCard key={item.id} item={item} />
-                    ))}
+                <div style={{ marginTop: 24, paddingTop: 16, borderTop: '1px solid var(--border-color)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                    <p className="recommendations-title" style={{ margin: 0 }}>
+                      {selectedDetection 
+                        ? `Recommendations for '${selectedDetection.label}'` 
+                        : 'Furniture Recommendations'}
+                    </p>
+                    {selectedDetection && (
+                      <button 
+                        className="btn-reset" 
+                        style={{ padding: '4px 12px', minHeight: 'unset', fontSize: 11, margin: 0, opacity: 0.8 }}
+                        onClick={() => setSelectedDetection(null)}
+                      >
+                        Clear Selection
+                      </button>
+                    )}
                   </div>
-                </>
+
+                  <div style={{ marginBottom: 20 }}>
+                    <a 
+                      href={getAmazonSearchUrl()} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        backgroundColor: '#FF9900',
+                        color: '#111',
+                        fontWeight: 600,
+                        fontSize: '13px',
+                        padding: '10px 18px',
+                        borderRadius: '6px',
+                        textDecoration: 'none',
+                        transition: 'all 0.2s ease',
+                        boxShadow: '0 4px 12px rgba(255, 153, 0, 0.2)'
+                      }}
+                      onMouseOver={(e) => {
+                        e.currentTarget.style.backgroundColor = '#fca41c'
+                        e.currentTarget.style.transform = 'translateY(-1px)'
+                      }}
+                      onMouseOut={(e) => {
+                        e.currentTarget.style.backgroundColor = '#FF9900'
+                        e.currentTarget.style.transform = 'translateY(0)'
+                      }}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle>
+                        <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
+                      </svg>
+                      Shop {selectedDetection ? `'${selectedDetection.label}'` : 'this Style'} on Amazon
+                    </a>
+                  </div>
+                  
+                  {displayRecs.length === 0 ? (
+                    <div className="empty-state" style={{ padding: '24px 0', minHeight: 'unset' }}>
+                      <p className="empty-state-text" style={{ fontSize: 13, opacity: 0.6 }}>
+                        No exact matches found for '{selectedDetection?.label}' in this room style.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="furniture-grid">
+                      {displayRecs.map((item) => (
+                        <FurnitureCard key={item.id} item={item} />
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           )}
@@ -280,11 +409,15 @@ function ImageWithBboxes({
   detections,
   imageSize,
   accentColor,
+  selectedDetection,
+  onSelectDetection,
 }: {
   src: string
   detections: Detection[]
   imageSize?: { width: number; height: number }
   accentColor: string
+  selectedDetection?: Detection | null
+  onSelectDetection?: (det: Detection) => void
 }) {
   const imgRef = useRef<HTMLImageElement>(null)
   const [displaySize, setDisplaySize] = useState({ w: 0, h: 0 })
@@ -318,20 +451,31 @@ function ImageWithBboxes({
             const ry = y1 * scaleY
             const rw = (x2 - x1) * scaleX
             const rh = (y2 - y1) * scaleY
+            
+            const isSelected = selectedDetection && 
+              selectedDetection.label === det.label && 
+              selectedDetection.bbox[0] === det.bbox[0] &&
+              selectedDetection.bbox[1] === det.bbox[1]
+
             return (
-              <g key={i}>
+              <g 
+                key={i} 
+                onClick={() => onSelectDetection && onSelectDetection(det)}
+                style={{ cursor: onSelectDetection ? 'pointer' : 'default', transition: 'all 0.2s ease', pointerEvents: 'all' }}
+              >
                 <rect
                   x={rx} y={ry} width={rw} height={rh}
-                  fill="none"
+                  fill={isSelected ? `${accentColor}25` : "transparent"}
                   stroke={accentColor}
-                  strokeWidth="2"
-                  strokeDasharray="6 3"
-                  opacity="0.9"
+                  strokeWidth={isSelected ? "3" : "2"}
+                  strokeDasharray={isSelected ? "none" : "6 3"}
+                  opacity={isSelected ? "1" : "0.7"}
                 />
                 <rect
                   x={rx} y={ry - 22} width={det.label.length * 8 + 20} height={20}
                   fill={accentColor}
                   rx="4"
+                  opacity={isSelected ? "1" : "0.9"}
                 />
                 <text
                   x={rx + 8} y={ry - 7}
@@ -356,19 +500,43 @@ function ImageWithBboxes({
 /* Furniture recommendation card                                        */
 /* ─────────────────────────────────────────────────────────────────── */
 function FurnitureCard({ item }: { item: FurnitureItem }) {
+  const nameLower = item.name.toLowerCase()
+  let keyword = 'furniture'
+  const lookups = [
+    'chair', 'sofa', 'couch', 'bed', 'table', 'plant', 'vase', 
+    'lamp', 'clock', 'tv', 'shelf', 'drawer', 'rug', 'mirror', 
+    'painting', 'cabinet', 'basket', 'console', 'ottoman', 'desk'
+  ]
+  for (const l of lookups) {
+    if (nameLower.includes(l)) {
+      keyword = l
+      break
+    }
+  }
+
+  let hash = 0
+  for (let i = 0; i < item.id.length; i++) {
+    hash = item.id.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  const lockId = Math.abs(hash % 10000)
+
+  const imgSrc = `https://loremflickr.com/400/300/interior,${keyword}?lock=${lockId}`
+
+  const getProductSearchUrl = () => {
+    const query = `${item.style} ${item.name} furniture`
+    return `https://www.amazon.com/s?k=${encodeURIComponent(query)}`
+  }
+
   return (
-    <div className="furniture-card">
+    <div className="furniture-card" style={{ display: 'flex', flexDirection: 'column' }}>
       <img
-        src={item.image_url}
+        src={imgSrc}
         alt={item.name}
         className="furniture-card-img"
-        onError={(e) => {
-          ;(e.target as HTMLImageElement).src = `https://picsum.photos/seed/${item.id}/400/300`
-        }}
       />
-      <div className="furniture-card-body">
+      <div className="furniture-card-body" style={{ display: 'flex', flexDirection: 'column', flexGrow: 1 }}>
         <p className="furniture-card-name">{item.name}</p>
-        <div className="furniture-card-meta">
+        <div className="furniture-card-meta" style={{ marginBottom: '16px' }}>
           <span className="furniture-style-tag">{item.style}</span>
           <div className="furniture-similarity">
             <div className="similarity-bar">
@@ -381,6 +549,43 @@ function FurnitureCard({ item }: { item: FurnitureItem }) {
               {(item.similarity_score * 100).toFixed(0)}%
             </span>
           </div>
+        </div>
+        
+        <div style={{ marginTop: 'auto' }}>
+          <a 
+            href={getProductSearchUrl()}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              padding: '8px 12px',
+              backgroundColor: '#f3f4f6',
+              color: '#374151',
+              fontSize: '12px',
+              fontWeight: 600,
+              textDecoration: 'none',
+              borderRadius: '6px',
+              border: '1px solid #e5e7eb',
+              transition: 'all 0.2s ease',
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.backgroundColor = '#e5e7eb'
+              e.currentTarget.style.borderColor = '#d1d5db'
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.backgroundColor = '#f3f4f6'
+              e.currentTarget.style.borderColor = '#e5e7eb'
+            }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle>
+              <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
+            </svg>
+            Shop this item
+          </a>
         </div>
       </div>
     </div>

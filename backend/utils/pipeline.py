@@ -22,10 +22,6 @@ FURNITURE_PATH = os.path.join(DATA_DIR, "furniture.json")
 
 
 def _get_device() -> torch.device:
-    if torch.backends.mps.is_available():
-        return torch.device("mps")
-    if torch.cuda.is_available():
-        return torch.device("cuda")
     return torch.device("cpu")
 
 _DEVICE = _get_device()
